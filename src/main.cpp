@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <rpcWiFi.h>
+#include <Wire.h>
 
 #include "config.h"
 
@@ -11,11 +12,12 @@
 const char* ssid = WIFI_SSID;
 const char* password =  WIFI_PASSWORD;
 
-byte mac[] = {0x00, 0x10, 0xFA, 0x6E, 0x38, 0x4B};
+byte mac[] = {0x00, 0x10, 0xFA, 0x6E, 0x22, 0x33};
 HADevice device(mac, sizeof(mac));
 WiFiClient client;
-HAMqtt mqtt(client, device);
- 
+HAMqtt mqtt(client, device, 12);
+
+uint32_t publish_interval_ms = 5000;
 
 #ifdef MONITOR_BATTERY
 #include <SparkFunBQ27441.h>
@@ -56,15 +58,36 @@ HASensor humidity("wio_aiq_humidity");
 #include <Tomoto_HM330X.h>
 Tomoto_HM330X sensor;
 
-HASensor pm1("wio_aiq_x");
-HASensor pm25("wio_aiq_y");
-HASensor pm10("wio_aiq_z");
+HASensor pm1("wio_aiq_pm1");
+HASensor pm25("wio_aiq_pm25");
+HASensor pm10("wio_aiq_pm10");
 #endif
 
- 
+HANumber publishInterval("wio_aiq_refresh_interval");
+
+void onNumberCommand(HANumeric number, HANumber* sender) {
+    if (!number.isSet()) {
+        // the reset command was send by Home Assistant
+    } else {
+        publish_interval_ms = number.toUInt32();
+    }
+
+    sender->setState(number); // report the selected option back to the HA panel
+}
+
+
 void setup() {
     Wire.begin();
     Serial.begin(115200);
+
+    publishInterval.setName("Publish Interval");
+    publishInterval.setUnitOfMeasurement("ms");
+    publishInterval.setRetain(true);
+    publishInterval.setMax(60000);
+    publishInterval.setMin(1000);
+    publishInterval.setStep(1000);
+    publishInterval.setMode(HANumber::Mode::ModeBox);
+    publishInterval.onCommand(onNumberCommand);
 
     // Set WiFi to station mode and disconnect from an AP if it was previously connected
     WiFi.mode(WIFI_STA);
@@ -86,7 +109,7 @@ void setup() {
     device.setName("Wio Terminal - Air Quality Monitor");
     device.setManufacturer("Seeed Studio");
     device.setModel("Wio Terminal");
-    device.setSoftwareVersion("1.0.0");
+    device.setSoftwareVersion("1.0.1");
 
     #ifdef MONITOR_BATTERY
     setupBQ27441();
@@ -100,6 +123,29 @@ void setup() {
     batteryVoltage.setIcon("mdi:battery");
     batteryVoltage.setName("Battery voltage");
     batteryVoltage.setUnitOfMeasurement("mV");
+    #endif
+
+    #ifdef MONITOR_HM3301
+    if (!sensor.begin()) {
+      Serial.println("Failed to initialize HM330X");
+      while (1)
+        ;
+    }
+
+    pm1.setDeviceClass("pm1");
+    pm1.setIcon("mdi:weather-dust");
+    pm1.setName("PM1");
+    pm1.setUnitOfMeasurement("µg/m³");
+
+    pm25.setDeviceClass("pm25");
+    pm25.setIcon("mdi:weather-dust");
+    pm25.setName("PM2.5");
+    pm25.setUnitOfMeasurement("µg/m³");
+
+    pm10.setDeviceClass("pm10");
+    pm10.setIcon("mdi:weather-dust");
+    pm10.setName("PM10");
+    pm10.setUnitOfMeasurement("µg/m³");   
     #endif
 
     #ifdef MONITOR_SCD30
@@ -120,29 +166,6 @@ void setup() {
     humidity.setName("Humidity");
     humidity.setUnitOfMeasurement("%");
    #endif
-
-    #ifdef MONITOR_HM3301
-    if (!sensor.begin()) {
-    Serial.println("Failed to initialize HM330X");
-    while (1)
-      ;
-
-    pm1.setDeviceClass("pm1");
-    pm1.setIcon("mdi:weather-dust");
-    pm1.setName("x");
-    pm1.setUnitOfMeasurement("ug/m3");
-
-    pm25.setDeviceClass("humidity");
-    pm25.setIcon("mdi:weather-dust");
-    pm25.setName("y");
-    pm25.setUnitOfMeasurement("ug/m3");
-
-    pm10.setDeviceClass("pm10");
-    pm10.setIcon("mdi:weather-dust");
-    pm10.setName("z");
-    pm10.setUnitOfMeasurement("ug/m3");   
-    #endif
-  }
 
     mqtt.begin(BROKER_ADDR);
 }
@@ -180,6 +203,6 @@ void loop() {
     }
     #endif
 
-
-    delay(5000);
+    Serial.printf("Sleeping for %d ms\n", publish_interval_ms);
+    delay(publish_interval_ms);
 }
