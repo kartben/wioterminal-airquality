@@ -2,6 +2,8 @@
 
 [![PlatformIO CI](https://github.com/kartben/wioterminal-airquality/actions/workflows/main.yml/badge.svg)](https://github.com/kartben/wioterminal-airquality/actions/workflows/main.yml)
 
+<img width="800" alt="Wio Terminal Air Quality monitoring device" src="wioterminal-airquality.png">
+
 This repository contains the source code for a Wio Terminal based Wi-Fi air quality monitoring device that integrates seamlessly with Home Assistant.
 
 It supports the following sensors/peripherals:
